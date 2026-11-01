@@ -1,5 +1,6 @@
 ﻿"""Streamlit web dashboard for Heart Disease Risk Analysis.
-Integrates patient data intake, model inference, clinical recommendations, and SQLite audit trail.
+Integrates patient data intake, model inference, SHAP explainability,
+clinical recommendations, and SQLite audit trail.
 """
 
 import sys
@@ -13,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import streamlit as st
 from app.components.ui_widgets import (
     render_audit_trail,
+    render_explainability_section,
     render_header,
     render_recommendations,
     render_risk_badge,
@@ -20,6 +22,7 @@ from app.components.ui_widgets import (
 from src.database.db_handler import DatabaseHandler
 from src.models.evaluate import load_metrics
 from src.models.train import train_model
+from src.services.explainer import ModelExplainer
 from src.services.predictor import HeartDiseasePredictor
 from src.services.recommender import generate_recommendations
 
@@ -47,10 +50,23 @@ def get_predictor() -> HeartDiseasePredictor:
         return HeartDiseasePredictor()
 
 
+@st.cache_resource
+def get_explainer() -> ModelExplainer:
+    predictor = get_predictor()
+    return ModelExplainer(pipeline=predictor.pipeline, background_size=30)
+
+
+@st.cache_data
+def get_cached_global_importance() -> Any:
+    explainer = get_explainer()
+    return explainer.compute_global_importance(max_samples=25, nsamples=40)
+
+
 def main():
     render_header()
     db = get_db_handler()
     predictor = get_predictor()
+    explainer = get_explainer()
 
     # Sidebar for Patient Vitals Entry
     with st.sidebar:
@@ -137,9 +153,13 @@ def main():
     }
 
     if analyze_button:
-        with st.spinner("Executing PCA dimension reduction & SVM inference..."):
+        with st.spinner("Executing model inference & computing SHAP feature attributions..."):
             classification, probability = predictor.predict(patient_payload)
             recommendations = generate_recommendations(patient_payload, risk_classification=classification)
+
+            # Compute SHAP explanation for this patient
+            explanation = explainer.explain_instance(patient_payload, nsamples=60)
+            global_importance_df = get_cached_global_importance()
 
             # Persist to database
             clinical_notes = [rec["message"] for rec in recommendations]
@@ -181,6 +201,10 @@ def main():
                 m3.metric("F1-Score", f"{metrics.get('f1_score', 0.0):.2f}")
             except Exception:
                 pass
+
+        # Dedicated Explainability Section below the main outcome
+        render_explainability_section(explanation, global_importance_df)
+
     else:
         with col_left:
             st.info("👈 Enter patient demographic and clinical parameters in the sidebar and click **Analyze Cardiovascular Risk**.")
@@ -190,10 +214,10 @@ def main():
                 st.subheader("🤖 Production Model Architecture")
                 st.markdown(
                     f"""
-                    - **Pipeline:** `StandardScaler` ➔ `PCA(95% Variance)` ➔ `SVC(RBF, Balanced)`
+                    - **Active Pipeline:** `{type(predictor.pipeline.named_steps.get('classifier')).__name__}`
                     - **ROC-AUC Score:** `{metrics.get('roc_auc', 0.0):.4f}`
                     - **Test Accuracy:** `{metrics.get('accuracy', 0.0)*100:.1f}%`
-                    - **Recall:** `{metrics.get('recall', 0.0):.4f}` | **Precision:** `{metrics.get('precision', 0.0):.4f}`
+                    - **Explainability:** SHAP Feature Attribution (Original Biomarker Level)
                     """
                 )
             except Exception:
