@@ -221,7 +221,7 @@ def render_explainability_section(
     """Render SHAP feature importance and patient-level explanation plots."""
     st.markdown("---")
     st.subheader("🔬 Model Explainability & Feature Attributions (SHAP)")
-
+    
     # Transparency label for SHAP
     if is_calibrated_mode:
         st.info(
@@ -299,6 +299,47 @@ def render_explainability_section(
             plt.close(fig2)
         else:
             st.info("Global importance is calculated on a background cohort sample.")
+
+
+def render_counterfactual_comparison_chart(
+    orig_prob: float,
+    hypo_prob: float,
+    delta_pp: float,
+) -> None:
+    """Render a clean comparison bar chart of original vs hypothetical probability."""
+    fig, ax = plt.subplots(figsize=(6, 3.2))
+    fig.patch.set_facecolor("#0f172a")
+    ax.set_facecolor("#1e293b")
+
+    labels = ["Original Patient", "Hypothetical Scenario"]
+    probs = [orig_prob * 100, hypo_prob * 100]
+    colors = ["#3b82f6", "#10b981" if hypo_prob <= orig_prob else "#ef4444"]
+
+    bars = ax.bar(labels, probs, color=colors, width=0.45)
+    ax.set_ylabel("Predicted Risk Probability (%)", color="#94a3b8")
+    ax.set_ylim(0, 100)
+    ax.tick_params(colors="#94a3b8")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_color("#334155")
+    ax.spines["left"].set_color("#334155")
+
+    for bar, p in zip(bars, probs):
+        height = bar.get_height()
+        ax.annotate(
+            f"{p:.1f}%",
+            xy=(bar.get_x() + bar.get_width() / 2, height),
+            xytext=(0, 4),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            color="#f8fafc",
+            fontweight="bold",
+        )
+
+    plt.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
 
 
 def render_audit_trail(df_records: pd.DataFrame) -> None:
