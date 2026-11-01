@@ -1,10 +1,12 @@
 ﻿"""Streamlit web dashboard for Heart Disease Risk Analysis.
-Integrates patient data intake, model inference, SHAP explainability,
-clinical recommendations, and SQLite audit trail.
+Integrates patient data intake, model inference, probability calibration,
+SHAP explainability, clinical recommendations, and SQLite audit trail.
 """
 
+import json
 import sys
 from pathlib import Path
+from typing import Any, Optional
 
 # Ensure project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -14,11 +16,14 @@ if str(PROJECT_ROOT) not in sys.path:
 import streamlit as st
 from app.components.ui_widgets import (
     render_audit_trail,
+    render_calibration_section,
+    render_clinical_disclaimer,
     render_explainability_section,
     render_header,
     render_recommendations,
     render_risk_badge,
 )
+from src.config import CALIBRATION_METRICS_PATH
 from src.database.db_handler import DatabaseHandler
 from src.models.evaluate import load_metrics
 from src.models.train import train_model
@@ -41,18 +46,26 @@ def get_db_handler() -> DatabaseHandler:
 
 
 @st.cache_resource
-def get_predictor() -> HeartDiseasePredictor:
+def get_uncalibrated_predictor() -> HeartDiseasePredictor:
     try:
-        return HeartDiseasePredictor()
+        return HeartDiseasePredictor(use_calibration=False)
     except FileNotFoundError:
         st.warning("Model artifact not found. Auto-training initial model pipeline...")
         train_model()
-        return HeartDiseasePredictor()
+        return HeartDiseasePredictor(use_calibration=False)
+
+
+@st.cache_resource
+def get_calibrated_predictor() -> Optional[HeartDiseasePredictor]:
+    try:
+        return HeartDiseasePredictor(use_calibration=True)
+    except Exception:
+        return None
 
 
 @st.cache_resource
 def get_explainer() -> ModelExplainer:
-    predictor = get_predictor()
+    predictor = get_uncalibrated_predictor()
     return ModelExplainer(pipeline=predictor.pipeline, background_size=30)
 
 
@@ -62,10 +75,20 @@ def get_cached_global_importance() -> Any:
     return explainer.compute_global_importance(max_samples=25, nsamples=40)
 
 
+def load_calibration_metrics() -> Optional[dict]:
+    if CALIBRATION_METRICS_PATH.exists():
+        with open(CALIBRATION_METRICS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+
 def main():
     render_header()
+    render_clinical_disclaimer()
+
     db = get_db_handler()
-    predictor = get_predictor()
+    uncal_predictor = get_uncalibrated_predictor()
+    cal_predictor = get_calibrated_predictor()
     explainer = get_explainer()
 
     # Sidebar for Patient Vitals Entry
@@ -135,6 +158,10 @@ def main():
             index=1,
         )
 
+        st.markdown("---")
+        # Keep calibration toggle default OFF as specified in Fix 5
+        use_calibrated_mode = st.toggle("Apply Probability Calibration (Platt)", value=False)
+
         analyze_button = st.button("🚀 Analyze Cardiovascular Risk", use_container_width=True, type="primary")
 
     # Main Area Layout
@@ -154,25 +181,34 @@ def main():
 
     if analyze_button:
         with st.spinner("Executing model inference & computing SHAP feature attributions..."):
-            classification, probability = predictor.predict(patient_payload)
-            recommendations = generate_recommendations(patient_payload, risk_classification=classification)
+            uncal_class, uncal_prob = uncal_predictor.predict(patient_payload)
 
-            # Compute SHAP explanation for this patient
+            if use_calibrated_mode and cal_predictor is not None:
+                final_class, final_prob = cal_predictor.predict(patient_payload)
+            else:
+                final_class, final_prob = uncal_class, uncal_prob
+
+            recommendations = generate_recommendations(patient_payload, risk_classification=final_class)
+
             explanation = explainer.explain_instance(patient_payload, nsamples=60)
             global_importance_df = get_cached_global_importance()
 
-            # Persist to database
             clinical_notes = [rec["message"] for rec in recommendations]
             record_id = db.log_patient_record(
                 patient_data=patient_payload,
-                risk_classification=classification,
-                risk_probability=probability,
+                risk_classification=final_class,
+                risk_probability=final_prob,
                 clinical_notes=clinical_notes,
             )
 
         with col_left:
             st.subheader("🎯 Inference Outcome")
-            render_risk_badge(classification, probability)
+            render_risk_badge(
+                classification=final_class,
+                probability=final_prob,
+                uncalibrated_probability=uncal_prob if use_calibrated_mode else None,
+                is_calibrated=use_calibrated_mode,
+            )
             render_recommendations(recommendations)
 
         with col_right:
@@ -190,7 +226,6 @@ def main():
                 """
             )
 
-            # Display Model Baseline Performance
             try:
                 metrics = load_metrics()
                 st.markdown("---")
@@ -202,8 +237,12 @@ def main():
             except Exception:
                 pass
 
-        # Dedicated Explainability Section below the main outcome
-        render_explainability_section(explanation, global_importance_df)
+        # Dedicated Probability Calibration Section
+        cal_data = load_calibration_metrics()
+        render_calibration_section(cal_data)
+
+        # Dedicated Explainability Section below with explicit transparency flag
+        render_explainability_section(explanation, global_importance_df, is_calibrated_mode=use_calibrated_mode)
 
     else:
         with col_left:
@@ -214,14 +253,19 @@ def main():
                 st.subheader("🤖 Production Model Architecture")
                 st.markdown(
                     f"""
-                    - **Active Pipeline:** `{type(predictor.pipeline.named_steps.get('classifier')).__name__}`
-                    - **ROC-AUC Score:** `{metrics.get('roc_auc', 0.0):.4f}`
+                    - **Active Classifier:** `{type(uncal_predictor.pipeline.named_steps.get('classifier')).__name__}`
+                    - **Test ROC-AUC:** `{metrics.get('roc_auc', 0.0):.4f}`
                     - **Test Accuracy:** `{metrics.get('accuracy', 0.0)*100:.1f}%`
+                    - **Probability Calibration:** Supported (Sigmoid / Platt scaling via `CalibratedClassifierCV`)
                     - **Explainability:** SHAP Feature Attribution (Original Biomarker Level)
                     """
                 )
             except Exception:
                 pass
+
+        cal_data = load_calibration_metrics()
+        if cal_data:
+            render_calibration_section(cal_data)
 
     # Audit Trail Section
     st.markdown("---")

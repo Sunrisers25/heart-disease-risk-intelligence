@@ -1,16 +1,17 @@
 ﻿"""Inference service module.
-Loads trained pipeline artifacts (baseline or best model) and runs predictions on single/batch records.
+Loads trained pipeline artifacts (baseline, best model, or calibrated model)
+and runs predictions on single/batch records with calibrated or uncalibrated probabilities.
 """
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 import joblib
 import numpy as np
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
-from src.config import BEST_MODEL_PATH, FEATURE_COLUMNS, MODEL_PATH
+from src.config import CALIBRATED_MODEL_PATH, FEATURE_COLUMNS, MODEL_PATH
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -19,26 +20,35 @@ logger = logging.getLogger(__name__)
 class HeartDiseasePredictor:
     """Encapsulates loading the model pipeline and running inference.
 
-    Defaults to `MODEL_PATH` (baseline SVM) for backward compatibility,
-    or can accept `BEST_MODEL_PATH` or custom pipeline path.
+    Supports loading:
+      - Default baseline SVM (`MODEL_PATH`)
+      - Calibrated model (`CALIBRATED_MODEL_PATH`)
+      - Custom pipeline path.
     """
 
-    def __init__(self, model_path: Union[str, Path] = MODEL_PATH):
-        self.model_path = Path(model_path)
-        self.pipeline: Pipeline = self._load_model()
+    def __init__(
+        self,
+        model_path: Union[str, Path] = MODEL_PATH,
+        use_calibration: bool = False,
+    ):
+        self.use_calibration = use_calibration
+        if use_calibration and CALIBRATED_MODEL_PATH.exists():
+            self.model_path = CALIBRATED_MODEL_PATH
+        else:
+            self.model_path = Path(model_path)
 
-    def _load_model(self) -> Pipeline:
+        self.pipeline: Any = self._load_model()
+
+    def _load_model(self) -> Any:
         """Load serialized scikit-learn pipeline from joblib file."""
         if not self.model_path.exists():
-            # Fallback to BEST_MODEL_PATH if default MODEL_PATH is missing, or vice-versa
-            alt_path = BEST_MODEL_PATH if self.model_path == MODEL_PATH else MODEL_PATH
-            if alt_path.exists():
-                logger.warning(
-                    "Model artifact not found at %s. Falling back to alternative at %s",
-                    self.model_path,
-                    alt_path,
-                )
-                self.model_path = alt_path
+            # Fallback check
+            if CALIBRATED_MODEL_PATH.exists():
+                logger.warning("Falling back to calibrated model at %s", CALIBRATED_MODEL_PATH)
+                self.model_path = CALIBRATED_MODEL_PATH
+            elif MODEL_PATH.exists():
+                logger.warning("Falling back to baseline model at %s", MODEL_PATH)
+                self.model_path = MODEL_PATH
             else:
                 raise FileNotFoundError(
                     f"Trained model artifact not found at {self.model_path}. "

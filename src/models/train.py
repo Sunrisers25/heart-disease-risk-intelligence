@@ -1,7 +1,8 @@
 ﻿"""Model training and comparison orchestrator.
 Trains and cross-validates SVM, Random Forest, and XGBoost.
 Selects the best performing candidate based on CV ROC-AUC.
-Preserves existing SVM artifacts and creates Phase 2 model comparison artifacts.
+Calibrates probabilities strictly on training data using CalibratedClassifierCV.
+Preserves existing SVM artifacts and creates Phase 2 model comparison & calibration artifacts.
 """
 
 from datetime import datetime
@@ -16,10 +17,14 @@ from sklearn.pipeline import Pipeline
 from src.config import (
     BEST_MODEL_METADATA_PATH,
     BEST_MODEL_PATH,
+    CALIBRATED_MODEL_PATH,
+    CALIBRATION_METADATA_PATH,
+    CALIBRATION_METRICS_PATH,
     MODEL_COMPARISON_PATH,
     MODEL_PATH,
 )
 from src.data_pipeline.loader import load_and_clean_data
+from src.models.calibration import ModelCalibrator
 from src.models.model_comparison import ModelComparisonFramework
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -27,12 +32,15 @@ logger = logging.getLogger(__name__)
 
 
 def train_model(save_artifact: bool = True) -> Tuple[Pipeline, ModelComparisonFramework]:
-    """Train, cross-validate, and compare SVM, Random Forest, and XGBoost models.
+    """Train, cross-validate, compare SVM, RF, XGBoost, and calibrate the winning model.
 
     Preserves `artifacts/svm_pca_pipeline.joblib` for backward compatibility.
     Saves:
       - `artifacts/svm_pca_pipeline.joblib` (baseline SVM pipeline)
       - `artifacts/best_model_pipeline.joblib` (selected winning pipeline)
+      - `artifacts/calibrated_model_pipeline.joblib` (calibrated winning pipeline)
+      - `artifacts/calibration_metrics.json` (calibration performance comparison)
+      - `artifacts/calibration_metadata.json` (calibration metadata & parameters)
       - `artifacts/model_comparison.json` (benchmark metrics for all models)
       - `artifacts/best_model_metadata.json` (metadata and config of winning model)
 
@@ -47,7 +55,7 @@ def train_model(save_artifact: bool = True) -> Tuple[Pipeline, ModelComparisonFr
     framework = ModelComparisonFramework()
     X_train, X_test, y_train, y_test = framework.prepare_data(df)
 
-    # Execute GridSearchCV across all candidates
+    # 1. Execute GridSearchCV across all candidates
     framework.run_comparison(X_train, X_test, y_train, y_test)
 
     # Print summary table
@@ -56,6 +64,37 @@ def train_model(save_artifact: bool = True) -> Tuple[Pipeline, ModelComparisonFr
 
     best_pipeline = framework.best_pipeline
     best_name = framework.best_model_name
+
+    # 2. Probability Calibration on the selected best model
+    logger.info("Initiating Probability Calibration on Selected Model [%s]...", best_name)
+    calibrator = ModelCalibrator(base_pipeline=best_pipeline)
+
+    # Evaluate calibration strictly on training data
+    calibrator.evaluate_training_cv_calibration(X_train, y_train)
+
+    # Fit final calibrated model on training data
+    calibrator.fit_calibrated_model(X_train, y_train)
+
+    # Evaluate calibration on untouched test set
+    cal_test_results = calibrator.evaluate_test_set(X_test, y_test)
+
+    logger.info("=" * 60)
+    logger.info("CALIBRATION EVALUATION (UNTOUCHED TEST SET)")
+    logger.info("=" * 60)
+    logger.info(
+        "Uncalibrated -> Brier: %.4f | Log Loss: %.4f | ECE: %.4f",
+        cal_test_results["uncalibrated"]["brier_score"],
+        cal_test_results["uncalibrated"]["log_loss"],
+        cal_test_results["uncalibrated"]["expected_calibration_error"],
+    )
+    logger.info(
+        "Calibrated   -> Brier: %.4f | Log Loss: %.4f | ECE: %.4f (Method: %s)",
+        cal_test_results["calibrated"]["brier_score"],
+        cal_test_results["calibrated"]["log_loss"],
+        cal_test_results["calibrated"]["expected_calibration_error"],
+        cal_test_results["calibration_method"],
+    )
+    logger.info("=" * 60)
 
     if save_artifact:
         ARTIFACTS_DIR = MODEL_PATH.parent
@@ -72,7 +111,10 @@ def train_model(save_artifact: bool = True) -> Tuple[Pipeline, ModelComparisonFr
             joblib.dump(best_pipeline, BEST_MODEL_PATH)
             logger.info("Saved best performing [%s] pipeline to %s", best_name, BEST_MODEL_PATH)
 
-        # 3. Save comparison benchmark JSON
+        # 3. Save calibrated model pipeline and calibration metrics
+        calibrator.save_artifacts(test_comparison_results=cal_test_results)
+
+        # 4. Save comparison benchmark JSON
         export_data = framework.to_export_dict(
             total_samples=len(df),
             train_samples=len(X_train),
@@ -82,7 +124,7 @@ def train_model(save_artifact: bool = True) -> Tuple[Pipeline, ModelComparisonFr
             json.dump(export_data, f, indent=4)
         logger.info("Saved comparison metrics to %s", MODEL_COMPARISON_PATH)
 
-        # 4. Save metadata of winning model
+        # 5. Save metadata of winning model
         winner_result = framework.results[best_name]
         metadata = {
             "model_name": best_name,

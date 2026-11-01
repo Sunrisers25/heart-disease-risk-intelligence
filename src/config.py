@@ -22,6 +22,11 @@ BEST_MODEL_PATH = ARTIFACTS_DIR / "best_model_pipeline.joblib"
 MODEL_COMPARISON_PATH = ARTIFACTS_DIR / "model_comparison.json"
 BEST_MODEL_METADATA_PATH = ARTIFACTS_DIR / "best_model_metadata.json"
 
+# Phase 2 Calibration Artifacts
+CALIBRATED_MODEL_PATH = ARTIFACTS_DIR / "calibrated_model_pipeline.joblib"
+CALIBRATION_METRICS_PATH = ARTIFACTS_DIR / "calibration_metrics.json"
+CALIBRATION_METADATA_PATH = ARTIFACTS_DIR / "calibration_metadata.json"
+
 # Database storage
 DB_PATH = BASE_DIR / "src" / "database" / "patients.db"
 

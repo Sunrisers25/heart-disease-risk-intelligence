@@ -1,6 +1,6 @@
 {
     "model_name": "SVM",
-    "trained_at_utc": "2026-11-01 10:11:10",
+    "trained_at_utc": "2026-11-01 10:53:02",
     "selection_metric": "cv_roc_auc_mean",
     "cv_roc_auc_mean": 0.7731,
     "cv_roc_auc_std": 0.0581,
@@ -30,7 +30,7 @@
             ]
         ]
     },
-    "training_duration_seconds": 2.95,
+    "training_duration_seconds": 3.75,
     "pipeline_steps": [
         "preprocessor",
         "pca",

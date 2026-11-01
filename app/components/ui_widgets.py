@@ -1,7 +1,7 @@
 ﻿"""UI widgets and visualization components for Heart Disease Risk Streamlit app."""
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -25,7 +25,21 @@ def render_header() -> None:
     )
 
 
-def render_risk_badge(classification: str, probability: float) -> None:
+def render_clinical_disclaimer() -> None:
+    """Render mandatory institutional clinical disclaimer banner."""
+    st.warning(
+        "⚠️ **Research Prototype Disclaimer**: This system is an experimental research prototype evaluated "
+        "using synthetic data. Its predicted risk probabilities and SHAP feature explanations are **not clinically validated** "
+        "and must not be used for medical diagnosis, prognosis, or clinical treatment planning without independent clinical trials."
+    )
+
+
+def render_risk_badge(
+    classification: str,
+    probability: float,
+    uncalibrated_probability: Optional[float] = None,
+    is_calibrated: bool = False,
+) -> None:
     """Render risk prediction outcome badge and confidence indicator."""
     is_high = classification == "High Risk"
     badge_bg = "#dc2626" if is_high else "#16a34a"
@@ -33,6 +47,7 @@ def render_risk_badge(classification: str, probability: float) -> None:
     icon = "⚠️" if is_high else "✅"
 
     pct = probability * 100
+    cal_label = "Platt-Calibrated Probability" if is_calibrated else "Model Estimated Probability"
 
     st.markdown(
         f"""
@@ -41,7 +56,7 @@ def render_risk_badge(classification: str, probability: float) -> None:
                 {icon} {badge_text}
             </div>
             <div style="font-size: 1.1rem; margin-top: 0.4rem; opacity: 0.95;">
-                Model Estimated Probability: <strong>{pct:.1f}%</strong>
+                {cal_label}: <strong>{pct:.1f}%</strong>
             </div>
         </div>
         """,
@@ -51,6 +66,13 @@ def render_risk_badge(classification: str, probability: float) -> None:
     # Progress bar indicator
     st.write(f"**Confidence Gauge ({pct:.1f}% Probability)**")
     st.progress(float(probability))
+
+    if uncalibrated_probability is not None and is_calibrated:
+        uncal_pct = uncalibrated_probability * 100
+        st.caption(
+            f"ℹ️ Raw Base Model Output: **{uncal_pct:.1f}%** ➔ "
+            f"Platt-Calibrated Probability: **{pct:.1f}%**"
+        )
 
 
 def render_recommendations(recommendations: List[Dict[str, str]]) -> None:
@@ -71,21 +93,153 @@ def render_recommendations(recommendations: List[Dict[str, str]]) -> None:
             st.info(f"ℹ️ **[{category}] {status}**\n\n{msg}")
 
 
-def render_explainability_section(explanation_data: Dict[str, Any], global_importance_df: Optional[pd.DataFrame] = None) -> None:
+def render_calibration_section(cal_metrics_dict: Optional[Dict[str, Any]]) -> None:
+    """Render Probability Calibration Reliability Diagrams & Brier score comparisons."""
+    st.markdown("---")
+    st.subheader("🎯 Probability Calibration & Statistical Reliability")
+    st.caption(
+        "Evaluation comparing Uncalibrated Model Probabilities vs. Sigmoid (Platt) Calibrated "
+        "Probabilities evaluated strictly on the untouched test cohort."
+    )
+
+    if not cal_metrics_dict:
+        st.info("Calibration benchmark metrics will appear after running training.")
+        return
+
+    uncal = cal_metrics_dict.get("uncalibrated", {})
+    cal = cal_metrics_dict.get("calibrated", {})
+
+    # Top level metrics comparison
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(
+        "Brier Score (Lower is better)",
+        f"{cal.get('brier_score', 0.0):.4f}",
+        delta=f"{cal.get('brier_score', 0.0) - uncal.get('brier_score', 0.0):.4f}",
+        delta_color="inverse",
+    )
+    c2.metric(
+        "Expected Calib. Error (ECE)",
+        f"{cal.get('expected_calibration_error', 0.0):.4f}",
+        delta=f"{cal.get('expected_calibration_error', 0.0) - uncal.get('expected_calibration_error', 0.0):.4f}",
+        delta_color="inverse",
+    )
+    c3.metric(
+        "Log Loss",
+        f"{cal.get('log_loss', 0.0):.4f}",
+        delta=f"{cal.get('log_loss', 0.0) - uncal.get('log_loss', 0.0):.4f}",
+        delta_color="inverse",
+    )
+    c4.metric(
+        "ROC-AUC",
+        f"{cal.get('roc_auc', 0.0):.4f}",
+        delta=f"{cal.get('roc_auc', 0.0) - uncal.get('roc_auc', 0.0):.4f}",
+    )
+
+    # Reliability Diagram Plot
+    col_plot1, col_plot2 = st.columns(2)
+
+    with col_plot1:
+        st.write("**Reliability Diagram (Calibration Curve)**")
+        fig, ax = plt.subplots(figsize=(6, 4.5))
+        fig.patch.set_facecolor("#0f172a")
+        ax.set_facecolor("#1e293b")
+
+        # Perfectly calibrated diagonal
+        ax.plot([0, 1], [0, 1], "k--", label="Perfect Calibration", color="#94a3b8", linewidth=1.5)
+
+        # Uncalibrated curve
+        uncal_curve = uncal.get("calibration_curve", {})
+        if uncal_curve:
+            ax.plot(
+                uncal_curve.get("mean_predicted_value", []),
+                uncal_curve.get("fraction_of_positives", []),
+                "s-",
+                color="#ef4444",
+                label=f"Uncalibrated (Brier={uncal.get('brier_score', 0.0):.3f})",
+                linewidth=1.8,
+            )
+
+        # Calibrated curve
+        cal_curve = cal.get("calibration_curve", {})
+        if cal_curve:
+            ax.plot(
+                cal_curve.get("mean_predicted_value", []),
+                cal_curve.get("fraction_of_positives", []),
+                "o-",
+                color="#10b981",
+                label=f"Sigmoid Calibrated (Brier={cal.get('brier_score', 0.0):.3f})",
+                linewidth=2.0,
+            )
+
+        ax.set_xlabel("Mean Predicted Probability", color="#94a3b8")
+        ax.set_ylabel("Observed Fraction of Positives", color="#94a3b8")
+        ax.tick_params(colors="#94a3b8")
+        ax.legend(facecolor="#1e293b", edgecolor="#334155", labelcolor="#f8fafc", loc="lower right")
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["bottom"].set_color("#334155")
+        ax.spines["left"].set_color("#334155")
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close(fig)
+
+    with col_plot2:
+        st.write("**Calibration Loss Comparison**")
+        fig_bar, ax_bar = plt.subplots(figsize=(6, 4.5))
+        fig_bar.patch.set_facecolor("#0f172a")
+        ax_bar.set_facecolor("#1e293b")
+
+        labels = ["Brier Score", "Log Loss", "ECE"]
+        uncal_vals = [uncal.get("brier_score", 0), uncal.get("log_loss", 0), uncal.get("expected_calibration_error", 0)]
+        cal_vals = [cal.get("brier_score", 0), cal.get("log_loss", 0), cal.get("expected_calibration_error", 0)]
+
+        x = np.arange(len(labels))
+        width = 0.35
+
+        ax_bar.bar(x - width/2, uncal_vals, width, label="Uncalibrated", color="#ef4444")
+        ax_bar.bar(x + width/2, cal_vals, width, label="Calibrated", color="#10b981")
+
+        ax_bar.set_ylabel("Loss / Error Value", color="#94a3b8")
+        ax_bar.set_xticks(x)
+        ax_bar.set_xticklabels(labels, color="#f8fafc")
+        ax_bar.tick_params(colors="#94a3b8")
+        ax_bar.legend(facecolor="#1e293b", edgecolor="#334155", labelcolor="#f8fafc")
+        ax_bar.spines["top"].set_visible(False)
+        ax_bar.spines["right"].set_visible(False)
+        ax_bar.spines["bottom"].set_color("#334155")
+        ax_bar.spines["left"].set_color("#334155")
+        plt.tight_layout()
+        st.pyplot(fig_bar)
+        plt.close(fig_bar)
+
+
+def render_explainability_section(
+    explanation_data: Dict[str, Any],
+    global_importance_df: Optional[pd.DataFrame] = None,
+    is_calibrated_mode: bool = False,
+) -> None:
     """Render SHAP feature importance and patient-level explanation plots."""
     st.markdown("---")
     st.subheader("🔬 Model Explainability & Feature Attributions (SHAP)")
-    st.caption(
-        "Attributions are computed directly against original clinical biomarkers. "
-        "Positive values push risk higher; negative values protect/lower risk."
-    )
+
+    # Transparency label for SHAP
+    if is_calibrated_mode:
+        st.info(
+            "📌 **Model Transparency Notice**: SHAP attributions explain the underlying base SVM decision function, "
+            "not the external Platt calibration transformation. Probability calibration rescales output probabilities "
+            "monotonically but does not alter the relative importance of individual clinical biomarkers."
+        )
+    else:
+        st.caption(
+            "Attributions are computed directly against original clinical biomarkers. "
+            "Positive values push risk higher; negative values protect/lower risk."
+        )
 
     tab_local, tab_global = st.tabs(["👤 Patient Prediction Breakdown", "🌍 Population Feature Importance"])
 
     with tab_local:
         contributions = explanation_data.get("feature_contributions", [])
         if contributions:
-            # Display waterfall-style horizontal bar chart
             features = [c["feature"] for c in reversed(contributions)]
             values = [c["shap_value"] for c in reversed(contributions)]
             colors = ["#ef4444" if v > 0 else "#3b82f6" for v in values]
@@ -110,7 +264,6 @@ def render_explainability_section(explanation_data: Dict[str, Any], global_impor
             st.pyplot(fig)
             plt.close(fig)
 
-            # Contribution table breakdown
             contrib_df = pd.DataFrame(contributions)
             contrib_df = contrib_df[["feature", "value", "shap_value", "direction"]].rename(
                 columns={

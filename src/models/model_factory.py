@@ -55,13 +55,19 @@ def create_tree_preprocessor() -> ColumnTransformer:
 def create_svm_pipeline(
     pca_variance: float = PCA_VARIANCE,
     random_state: int = RANDOM_STATE,
+    probability: bool = True,
 ) -> Pipeline:
     """Construct standard SVM Pipeline:
 
     Steps:
       1. Preprocessor: StandardScaler for numeric features + OneHotEncoder for categoricals.
       2. PCA: Reduces dimension retaining `pca_variance` (default: 0.95).
-      3. Classifier: SVC(kernel='rbf', probability=True, class_weight='balanced').
+      3. Classifier: SVC(kernel='rbf', probability=probability, class_weight='balanced').
+
+    Args:
+        probability: If False, outputs raw decision_function scores, ideal for external
+                     Platt calibration (prevents double-Platt calibration).
+                     If True, outputs internal cross-validated Platt probabilities.
     """
     preprocessor = create_preprocessor()
 
@@ -73,7 +79,7 @@ def create_svm_pipeline(
                 "classifier",
                 SVC(
                     kernel="rbf",
-                    probability=True,
+                    probability=probability,
                     class_weight="balanced",
                     random_state=random_state,
                 ),
@@ -136,14 +142,18 @@ def create_xgb_pipeline(random_state: int = RANDOM_STATE) -> Pipeline:
     return pipeline
 
 
-def get_model_pipeline(model_name: str, random_state: int = RANDOM_STATE) -> Pipeline:
+def get_model_pipeline(
+    model_name: str,
+    random_state: int = RANDOM_STATE,
+    probability: bool = True,
+) -> Pipeline:
     """Retrieve an instantiated Pipeline for a specified model architecture.
 
     Supported model names: 'svm', 'random_forest', 'xgboost' (case and space insensitive).
     """
     name = model_name.lower().replace(" ", "_").replace("-", "_").strip()
     if name in {"svm", "svc"}:
-        return create_svm_pipeline(random_state=random_state)
+        return create_svm_pipeline(random_state=random_state, probability=probability)
     elif name in {"random_forest", "rf"}:
         return create_rf_pipeline(random_state=random_state)
     elif name in {"xgboost", "xgb"}:

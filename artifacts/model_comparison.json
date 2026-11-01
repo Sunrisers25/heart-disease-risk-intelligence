@@ -20,7 +20,7 @@
             },
             "cv_roc_auc_mean": 0.7731,
             "cv_roc_auc_std": 0.0581,
-            "training_duration_seconds": 2.95,
+            "training_duration_seconds": 3.75,
             "test_metrics": {
                 "accuracy": 0.8167,
                 "precision": 0.8065,
@@ -52,7 +52,7 @@
             },
             "cv_roc_auc_mean": 0.7613,
             "cv_roc_auc_std": 0.0559,
-            "training_duration_seconds": 1.64,
+            "training_duration_seconds": 1.85,
             "test_metrics": {
                 "accuracy": 0.6833,
                 "precision": 0.6774,
@@ -84,7 +84,7 @@
             },
             "cv_roc_auc_mean": 0.7474,
             "cv_roc_auc_std": 0.0378,
-            "training_duration_seconds": 2.32,
+            "training_duration_seconds": 1.41,
             "test_metrics": {
                 "accuracy": 0.6333,
                 "precision": 0.6429,
