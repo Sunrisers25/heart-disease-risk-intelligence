@@ -1,15 +1,19 @@
 """Cardiovascular risk prediction request and response schemas."""
 
-from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Dict, List, Literal, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from backend.schemas.patient import PatientInputSchema
 
 
 class SinglePredictionRequest(BaseModel):
-    """Payload for requesting cardiovascular risk prediction on a single patient."""
+    """Payload for requesting cardiovascular risk prediction on a single patient.
 
-    patient: PatientInputSchema = Field(
-        ...,
+    Supports both nested format (`{"patient": {...}, "calibrate": false}`)
+    and flat patient biomarker format (`{"Age": 58, "Gender": "Male", ...}`).
+    """
+
+    patient: Optional[PatientInputSchema] = Field(
+        default=None,
         description="Patient clinical biomarker vitals",
     )
     calibrate: bool = Field(
@@ -22,6 +26,25 @@ class SinglePredictionRequest(BaseModel):
     )
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def assemble_patient(cls, data: Any) -> Any:
+        """Handle flat patient payloads by grouping biomarkers under `patient`."""
+        if isinstance(data, dict):
+            if "patient" in data and data["patient"] is not None:
+                return data
+            biomarkers = {}
+            top_level = {}
+            for k, v in data.items():
+                if k in {"calibrate", "log_audit"}:
+                    top_level[k] = v
+                else:
+                    biomarkers[k] = v
+            if biomarkers:
+                top_level["patient"] = PatientInputSchema(**biomarkers)
+                return top_level
+        return data
 
 
 class BatchPredictionRequest(BaseModel):
@@ -58,6 +81,11 @@ class SinglePredictionResponse(BaseModel):
     """Structured result of a single patient cardiovascular risk evaluation."""
 
     patient_id: Optional[str] = Field(default=None, description="Patient identifier if supplied")
+    predicted_class: int = Field(
+        default=0,
+        description="Binary classification index: 1 (High Risk) or 0 (Low Risk)",
+        examples=[1],
+    )
     risk_classification: Literal["High Risk", "Low Risk"] = Field(
         ...,
         description="Binary clinical cardiovascular risk category",
@@ -78,6 +106,10 @@ class SinglePredictionResponse(BaseModel):
         ...,
         description="Indicates whether probability calibration was applied",
     )
+    model_metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Metadata describing active model architecture and calibration technique",
+    )
     recommendations: List[RecommendationItem] = Field(
         default_factory=list,
         description="Clinical recommendations generated according to ACC/AHA guidelines",
@@ -86,6 +118,13 @@ class SinglePredictionResponse(BaseModel):
         default=None,
         description="Database primary key ID in audit_logs table if persisted",
     )
+    disclaimer: str = Field(
+        default=(
+            "Research prototype evaluated on synthetic data. "
+            "Model estimates are statistical approximations and do not constitute clinical diagnosis."
+        ),
+        description="Mandatory clinical research prototype disclaimer",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -93,7 +132,13 @@ class SinglePredictionResponse(BaseModel):
 class BatchPredictionItem(BaseModel):
     """Assessment item within a batch prediction result."""
 
+    record_id: Optional[Union[str, int]] = Field(
+        default=None,
+        description="Stable record identifier within batch",
+        examples=["P-01", "record-1"],
+    )
     patient_id: Optional[str] = Field(default=None, description="Patient identifier")
+    predicted_class: int = Field(default=0, description="Binary classification index (1: High Risk, 0: Low Risk)")
     risk_classification: Literal["High Risk", "Low Risk"] = Field(..., description="Risk label")
     risk_probability: float = Field(..., ge=0.0, le=1.0, description="Risk probability (0.0 to 1.0)")
     confidence_percentage: float = Field(..., ge=0.0, le=100.0, description="Percentage (0.0% to 100.0%)")
@@ -105,6 +150,13 @@ class BatchPredictionResponse(BaseModel):
     total_records: int = Field(..., ge=1, description="Count of evaluated patient records")
     is_calibrated: bool = Field(..., description="Whether probability calibration was applied")
     predictions: List[BatchPredictionItem] = Field(..., description="Individual risk assessments")
+    disclaimer: str = Field(
+        default=(
+            "Research prototype evaluated on synthetic data. "
+            "Model estimates are statistical approximations and do not constitute clinical diagnosis."
+        ),
+        description="Mandatory clinical research prototype disclaimer",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 

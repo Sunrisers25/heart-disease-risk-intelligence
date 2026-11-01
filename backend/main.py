@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from backend.core.config import settings
 from backend.schemas.common import APIErrorResponse, ErrorDetail, HealthResponse
+from backend.api.v1.api import api_router
 from src.config import BEST_MODEL_PATH, CALIBRATED_MODEL_PATH, DB_PATH, MODEL_PATH
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -33,6 +34,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount API v1 Routers
+app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.exception_handler(RequestValidationError)
@@ -57,7 +61,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         timestamp=datetime.utcnow(),
     )
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422),
         content=error_response.model_dump(mode="json"),
     )
 
