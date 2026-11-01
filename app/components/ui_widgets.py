@@ -221,7 +221,7 @@ def render_explainability_section(
     """Render SHAP feature importance and patient-level explanation plots."""
     st.markdown("---")
     st.subheader("🔬 Model Explainability & Feature Attributions (SHAP)")
-    
+
     # Transparency label for SHAP
     if is_calibrated_mode:
         st.info(

@@ -393,9 +393,9 @@ def main():
             st.markdown(
                 f"""
                 <div style="background-color: #1e293b; padding: 0.9rem; border-radius: 8px; border-left: 4px solid #3b82f6; margin-top: 0.8rem;">
-                    <strong>Scenario Summary:</strong> Changing the selected hypothetical inputs {delta_dir} the model's 
-                    estimated probability from <strong>{sim_result.original_probability*100:.1f}%</strong> to 
-                    <strong>{sim_result.hypothetical_probability*100:.1f}%</strong> 
+                    <strong>Scenario Summary:</strong> Changing the selected hypothetical inputs {delta_dir} the model's
+                    estimated probability from <strong>{sim_result.original_probability*100:.1f}%</strong> to
+                    <strong>{sim_result.hypothetical_probability*100:.1f}%</strong>
                     ({abs(sim_result.delta_percentage_points):.2f} percentage points difference).
                 </div>
                 """,
