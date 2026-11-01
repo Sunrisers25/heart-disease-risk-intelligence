@@ -1,12 +1,15 @@
 """Cardiovascular risk prediction API endpoints."""
 
+from datetime import datetime
+import json
 import logging
 from typing import List, Optional
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
-from backend.core.dependencies import ModelContainer
+from backend.core.dependencies import ModelContainer, get_db
 from backend.schemas.prediction import (
     BatchPredictionItem,
     BatchPredictionRequest,
@@ -15,6 +18,7 @@ from backend.schemas.prediction import (
     SinglePredictionRequest,
     SinglePredictionResponse,
 )
+from src.database.models import Patient, PredictionHistory
 from src.services.recommender import generate_recommendations
 
 logger = logging.getLogger("backend.endpoints.predictions")
@@ -31,7 +35,10 @@ router = APIRouter()
         "SVM model or Platt-calibrated model. Returns actionable ACC/AHA clinical recommendations."
     ),
 )
-async def predict_single(request: SinglePredictionRequest) -> SinglePredictionResponse:
+async def predict_single(
+    request: SinglePredictionRequest,
+    db: Session = Depends(get_db),
+) -> SinglePredictionResponse:
     """Run inference for a single patient profile."""
     if request.patient is None:
         raise HTTPException(
@@ -41,6 +48,21 @@ async def predict_single(request: SinglePredictionRequest) -> SinglePredictionRe
 
     patient_dict = request.patient.to_feature_dict()
     patient_id = request.patient.patient_id
+
+    # Verify registered patient if requested
+    registered_patient = None
+    if patient_id:
+        registered_patient = db.query(Patient).filter(Patient.patient_id == patient_id).first()
+        if request.require_registered_patient and not registered_patient:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Patient '{patient_id}' is not registered in the system.",
+            )
+    elif request.require_registered_patient:
+        raise HTTPException(
+            status_code=getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422),
+            detail="Patient ID is required when registered patient association is enforced.",
+        )
 
     try:
         predictor = ModelContainer.get_predictor(calibrate=request.calibrate)
@@ -104,6 +126,30 @@ async def predict_single(request: SinglePredictionRequest) -> SinglePredictionRe
         ),
     }
 
+    # Persist prediction history if associated with a registered patient
+    prediction_history_id: Optional[int] = None
+    if registered_patient:
+        try:
+            history_entry = PredictionHistory(
+                patient_internal_id=registered_patient.id,
+                patient_id=registered_patient.patient_id,
+                predicted_class=predicted_class,
+                risk_classification=classification,
+                risk_probability=risk_probability,
+                is_calibrated=getattr(predictor, "use_calibration", False),
+                model_metadata=json.dumps(metadata),
+                prediction_timestamp=datetime.utcnow(),
+                audit_record_id=audit_id,
+            )
+            db.add(history_entry)
+            db.commit()
+            db.refresh(history_entry)
+            prediction_history_id = history_entry.id
+            logger.info("Persisted prediction history record #%d for patient %s", prediction_history_id, patient_id)
+        except Exception as exc:
+            db.rollback()
+            logger.warning("Failed to persist prediction history for patient %s: %s", patient_id, exc)
+
     return SinglePredictionResponse(
         patient_id=patient_id,
         predicted_class=predicted_class,
@@ -114,6 +160,7 @@ async def predict_single(request: SinglePredictionRequest) -> SinglePredictionRe
         model_metadata=metadata,
         recommendations=recommendations,
         audit_record_id=audit_id,
+        prediction_history_id=prediction_history_id,
     )
 
 

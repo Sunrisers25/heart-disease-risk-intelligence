@@ -3,6 +3,7 @@
 from typing import List, Union
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from src.config import DB_PATH
 
 
 class Settings(BaseSettings):
@@ -33,6 +34,9 @@ class Settings(BaseSettings):
     DEFAULT_CALIBRATE: bool = False
     ENABLE_AUDIT_LOGGING: bool = True
 
+    # Database configuration
+    DATABASE_URL: str = f"sqlite:///{DB_PATH}"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -51,4 +55,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-

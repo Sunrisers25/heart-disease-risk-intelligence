@@ -24,6 +24,13 @@ class SinglePredictionRequest(BaseModel):
         default=True,
         description="Whether to persist the clinical prediction and timestamp into the SQLite audit database",
     )
+    require_registered_patient: bool = Field(
+        default=False,
+        description=(
+            "When true, enforces that patient_id corresponds to a pre-registered patient profile. "
+            "Returns HTTP 404 if the patient is not found."
+        ),
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -37,7 +44,7 @@ class SinglePredictionRequest(BaseModel):
             biomarkers = {}
             top_level = {}
             for k, v in data.items():
-                if k in {"calibrate", "log_audit"}:
+                if k in {"calibrate", "log_audit", "require_registered_patient"}:
                     top_level[k] = v
                 else:
                     biomarkers[k] = v
@@ -117,6 +124,10 @@ class SinglePredictionResponse(BaseModel):
     audit_record_id: Optional[int] = Field(
         default=None,
         description="Database primary key ID in audit_logs table if persisted",
+    )
+    prediction_history_id: Optional[int] = Field(
+        default=None,
+        description="Primary key ID in prediction_history if associated with a registered patient",
     )
     disclaimer: str = Field(
         default=(

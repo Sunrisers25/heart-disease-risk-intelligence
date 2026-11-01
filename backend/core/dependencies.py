@@ -1,11 +1,13 @@
 """FastAPI dependency injection providers for ML models, database handlers, and singletons."""
 
 import logging
-from typing import Optional
+from typing import Generator, Optional
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
 from src.config import BEST_MODEL_PATH, CALIBRATED_MODEL_PATH, MODEL_PATH
 from src.database.db_handler import DatabaseHandler
+from src.database.session import get_db_session
 from src.services.predictor import HeartDiseasePredictor
 
 logger = logging.getLogger("backend.dependencies")
@@ -81,3 +83,8 @@ class ModelContainer:
         cls._raw_predictor = None
         cls._calibrated_predictor = None
         cls._db_handler = None
+
+
+def get_db() -> Generator[Session, None, None]:
+    """FastAPI dependency for obtaining a transactional database session."""
+    yield from get_db_session()

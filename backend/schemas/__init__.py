@@ -2,6 +2,14 @@
 
 from backend.schemas.common import APIErrorResponse, ErrorDetail, HealthResponse
 from backend.schemas.patient import PatientInputSchema
+from backend.schemas.patient_management import (
+    PaginatedPatientResponse,
+    PaginatedPredictionHistoryResponse,
+    PatientCreateRequest,
+    PatientResponse,
+    PatientUpdateRequest,
+    PredictionHistoryItem,
+)
 from backend.schemas.prediction import (
     BatchPredictionItem,
     BatchPredictionRequest,
@@ -22,5 +30,11 @@ __all__ = [
     "BatchPredictionResponse",
     "BatchPredictionItem",
     "RecommendationItem",
+    "PatientCreateRequest",
+    "PatientUpdateRequest",
+    "PatientResponse",
+    "PaginatedPatientResponse",
+    "PredictionHistoryItem",
+    "PaginatedPredictionHistoryResponse",
 ]
 

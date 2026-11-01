@@ -1,5 +1,6 @@
 """FastAPI Application entry point for Heart Disease Risk Intelligence API."""
 
+from contextlib import asynccontextmanager
 from datetime import datetime
 import logging
 from typing import List
@@ -13,9 +14,21 @@ from backend.core.config import settings
 from backend.schemas.common import APIErrorResponse, ErrorDetail, HealthResponse
 from backend.api.v1.api import api_router
 from src.config import BEST_MODEL_PATH, CALIBRATED_MODEL_PATH, DB_PATH, MODEL_PATH
+from src.database.session import init_db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("backend.main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler initializing DB tables and resources on startup."""
+    try:
+        init_db()
+    except Exception as exc:
+        logger.error("Database initialization failed during startup: %s", exc)
+    yield
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -24,6 +37,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",
+    lifespan=lifespan,
 )
 
 # CORS Middleware setup
@@ -112,4 +126,3 @@ async def health_check() -> HealthResponse:
         calibrated_model_available=calibrated_ready,
         database_connected=db_ready,
     )
-
