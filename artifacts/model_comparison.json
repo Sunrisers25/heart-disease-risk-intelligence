@@ -1,0 +1,111 @@
+{
+    "dataset_size": 300,
+    "training_sample_count": 240,
+    "test_sample_count": 60,
+    "random_seed": 42,
+    "cross_validation": {
+        "method": "StratifiedKFold",
+        "n_splits": 5,
+        "shuffle": true,
+        "scoring": "roc_auc"
+    },
+    "selected_model_name": "SVM",
+    "selection_criterion": "highest_mean_cv_roc_auc",
+    "models": {
+        "SVM": {
+            "best_hyperparameters": {
+                "classifier__C": 0.1,
+                "classifier__gamma": "scale",
+                "classifier__kernel": "rbf"
+            },
+            "cv_roc_auc_mean": 0.7731,
+            "cv_roc_auc_std": 0.0581,
+            "training_duration_seconds": 2.95,
+            "test_metrics": {
+                "accuracy": 0.8167,
+                "precision": 0.8065,
+                "recall": 0.8333,
+                "f1_score": 0.8197,
+                "roc_auc": 0.8967,
+                "sensitivity": 0.8333,
+                "specificity": 0.8,
+                "brier_score": 0.142,
+                "log_loss": 0.4534,
+                "confusion_matrix": [
+                    [
+                        24,
+                        6
+                    ],
+                    [
+                        5,
+                        25
+                    ]
+                ]
+            }
+        },
+        "Random Forest": {
+            "best_hyperparameters": {
+                "classifier__max_depth": 10,
+                "classifier__min_samples_leaf": 2,
+                "classifier__min_samples_split": 2,
+                "classifier__n_estimators": 200
+            },
+            "cv_roc_auc_mean": 0.7613,
+            "cv_roc_auc_std": 0.0559,
+            "training_duration_seconds": 1.64,
+            "test_metrics": {
+                "accuracy": 0.6833,
+                "precision": 0.6774,
+                "recall": 0.7,
+                "f1_score": 0.6885,
+                "roc_auc": 0.7678,
+                "sensitivity": 0.7,
+                "specificity": 0.6667,
+                "brier_score": 0.1923,
+                "log_loss": 0.5613,
+                "confusion_matrix": [
+                    [
+                        20,
+                        10
+                    ],
+                    [
+                        9,
+                        21
+                    ]
+                ]
+            }
+        },
+        "XGBoost": {
+            "best_hyperparameters": {
+                "classifier__learning_rate": 0.03,
+                "classifier__max_depth": 5,
+                "classifier__n_estimators": 100,
+                "classifier__subsample": 0.8
+            },
+            "cv_roc_auc_mean": 0.7474,
+            "cv_roc_auc_std": 0.0378,
+            "training_duration_seconds": 2.32,
+            "test_metrics": {
+                "accuracy": 0.6333,
+                "precision": 0.6429,
+                "recall": 0.6,
+                "f1_score": 0.6207,
+                "roc_auc": 0.7511,
+                "sensitivity": 0.6,
+                "specificity": 0.6667,
+                "brier_score": 0.2058,
+                "log_loss": 0.5939,
+                "confusion_matrix": [
+                    [
+                        20,
+                        10
+                    ],
+                    [
+                        12,
+                        18
+                    ]
+                ]
+            }
+        }
+    }
+}

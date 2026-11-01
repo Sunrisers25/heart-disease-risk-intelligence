@@ -12,10 +12,15 @@ DATA_DIR = BASE_DIR / "data"
 RAW_DATA_PATH = DATA_DIR / "raw" / "heart_disease_raw.csv"
 PROCESSED_DATA_PATH = DATA_DIR / "processed" / "heart_disease_clean.csv"
 
-# Artifacts (trained model pipeline and evaluation metrics)
+# Artifacts (trained model pipelines, evaluation metrics, and comparisons)
 ARTIFACTS_DIR = BASE_DIR / "artifacts"
 MODEL_PATH = ARTIFACTS_DIR / "svm_pca_pipeline.joblib"
 METRICS_PATH = ARTIFACTS_DIR / "model_metrics.json"
+
+# Phase 2 Model Comparison Artifacts
+BEST_MODEL_PATH = ARTIFACTS_DIR / "best_model_pipeline.joblib"
+MODEL_COMPARISON_PATH = ARTIFACTS_DIR / "model_comparison.json"
+BEST_MODEL_METADATA_PATH = ARTIFACTS_DIR / "best_model_metadata.json"
 
 # Database storage
 DB_PATH = BASE_DIR / "src" / "database" / "patients.db"

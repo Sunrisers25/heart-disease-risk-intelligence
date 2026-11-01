@@ -1,5 +1,5 @@
 ﻿"""Inference service module.
-Loads trained SVM-PCA pipeline artifact and runs predictions on single/batch records.
+Loads trained pipeline artifacts (baseline or best model) and runs predictions on single/batch records.
 """
 
 import logging
@@ -10,26 +10,41 @@ import numpy as np
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
-from src.config import FEATURE_COLUMNS, MODEL_PATH
+from src.config import BEST_MODEL_PATH, FEATURE_COLUMNS, MODEL_PATH
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
 class HeartDiseasePredictor:
-    """Encapsulates loading the model pipeline and running inference."""
+    """Encapsulates loading the model pipeline and running inference.
 
-    def __init__(self, model_path: Path = MODEL_PATH):
+    Defaults to `MODEL_PATH` (baseline SVM) for backward compatibility,
+    or can accept `BEST_MODEL_PATH` or custom pipeline path.
+    """
+
+    def __init__(self, model_path: Union[str, Path] = MODEL_PATH):
         self.model_path = Path(model_path)
         self.pipeline: Pipeline = self._load_model()
 
     def _load_model(self) -> Pipeline:
         """Load serialized scikit-learn pipeline from joblib file."""
         if not self.model_path.exists():
-            raise FileNotFoundError(
-                f"Trained model artifact not found at {self.model_path}. "
-                "Please run `python -m src.models.train` first."
-            )
+            # Fallback to BEST_MODEL_PATH if default MODEL_PATH is missing, or vice-versa
+            alt_path = BEST_MODEL_PATH if self.model_path == MODEL_PATH else MODEL_PATH
+            if alt_path.exists():
+                logger.warning(
+                    "Model artifact not found at %s. Falling back to alternative at %s",
+                    self.model_path,
+                    alt_path,
+                )
+                self.model_path = alt_path
+            else:
+                raise FileNotFoundError(
+                    f"Trained model artifact not found at {self.model_path}. "
+                    "Please run `python -m src.models.train` first."
+                )
+
         try:
             pipeline = joblib.load(self.model_path)
             logger.info("Successfully loaded model pipeline from %s", self.model_path)
@@ -69,7 +84,6 @@ class HeartDiseasePredictor:
 
         # Predict probability for positive class (1 = High Risk)
         proba = self.pipeline.predict_proba(df)[0]
-        # In SVC with classes_ [0, 1], index 1 corresponds to positive class
         classes = list(self.pipeline.classes_)
         if 1 in classes:
             pos_idx = classes.index(1)
@@ -83,6 +97,8 @@ class HeartDiseasePredictor:
     def predict_batch(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
         """Predict labels and probabilities for multiple patient records."""
         clean_df = self._prepare_input(df)
-        probabilities = self.pipeline.predict_proba(clean_df)[:, 1]
+        classes = list(self.pipeline.classes_)
+        pos_idx = classes.index(1) if 1 in classes else 1
+        probabilities = self.pipeline.predict_proba(clean_df)[:, pos_idx]
         labels = np.where(probabilities >= 0.5, "High Risk", "Low Risk")
         return labels, np.round(probabilities, 4)
