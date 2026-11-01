@@ -1,0 +1,102 @@
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python packaging
+build/
+dist/
+*.egg
+*.egg-info/
+.eggs/
+wheels/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+secrets.toml
+.streamlit/secrets.toml
+
+# Databases and patient information
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# Code quality tools
+.mypy_cache/
+.ruff_cache/
+.pyre/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Streamlit cache
+.streamlit/cache/
+.streamlit/*.log
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Large ML model files and checkpoints
+*.h5
+*.keras
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.pb
+
+# Experiment tracking
+mlruns/
+wandb/
+lightning_logs/
+tensorboard/
+checkpoints/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# Generated reports
+reports/generated/
+
+# Keep important project artifacts:
+# artifacts/svm_pca_pipeline.joblib
+# artifacts/model_metrics.json
+
+# Never commit real patient data.
